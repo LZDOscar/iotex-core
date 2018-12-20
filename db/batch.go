@@ -247,6 +247,7 @@ func (cb *cachedBatch) Unlock() {
 
 // ClearAndUnlock clears the write queue and unlocks the batch
 func (cb *cachedBatch) ClearAndUnlock() {
+	ssCounterMtc.WithLabelValues("clearAndUnlock").Inc()
 	defer cb.lock.Unlock()
 	cb.KVStoreCache.Clear()
 	cb.KVStoreBatch.Clear()
@@ -291,6 +292,7 @@ func (cb *cachedBatch) Delete(namespace string, key []byte, errorFormat string, 
 
 // Clear clear the cached batch buffer
 func (cb *cachedBatch) Clear() {
+	ssCounterMtc.WithLabelValues("clear").Inc()
 	cb.lock.Lock()
 	defer cb.lock.Unlock()
 	cb.KVStoreCache.Clear()

@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zjshen14/go-fsm"
 
-	"github.com/iotexproject/iotex-core/blockchain"
+	"github.com/iotexproject/iotex-core/blockchain/block"
 	"github.com/iotexproject/iotex-core/crypto"
 	"github.com/iotexproject/iotex-core/db"
 	"github.com/iotexproject/iotex-core/endorsement"
@@ -417,7 +417,7 @@ func (m *cFSM) handleInitBlockProposeEvt(evt fsm.Event) (fsm.State, error) {
 	return sAcceptPropose, nil
 }
 
-func (m *cFSM) validateProposeBlock(blk *blockchain.Block, expectedProposer string) bool {
+func (m *cFSM) validateProposeBlock(blk *block.Block, expectedProposer string) bool {
 	blkHash := blk.HashBlock()
 	errorLog := logger.Error().
 		Uint64("expectedHeight", m.ctx.round.height).
@@ -787,7 +787,7 @@ func (m *cFSM) newCEvt(t fsm.EventType) *consensusEvt {
 	return newCEvt(t, m.ctx.round.height, m.ctx.round.number, m.ctx.clock)
 }
 
-func (m *cFSM) newProposeBlkEvt(blk *blockchain.Block) *proposeBlkEvt {
+func (m *cFSM) newProposeBlkEvt(blk *block.Block) *proposeBlkEvt {
 	return newProposeBlkEvt(blk, m.ctx.round.proofOfLock, m.ctx.round.number, m.ctx.clock)
 }
 
@@ -820,6 +820,6 @@ func (m *cFSM) newBackdoorEvt(dst fsm.State) *backdoorEvt {
 	return newBackdoorEvt(dst, m.ctx.round.height, m.ctx.round.number, m.ctx.clock)
 }
 
-func verifyDKGSignature(blk *blockchain.Block, seedByte []byte) error {
-	return crypto.BLS.Verify(blk.Header.DKGPubkey, seedByte, blk.Header.DKGBlockSig)
+func verifyDKGSignature(blk *block.Block, seedByte []byte) error {
+	return crypto.BLS.Verify(blk.DKGPubkey(), seedByte, blk.DKGSignature())
 }

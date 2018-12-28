@@ -15,12 +15,12 @@ import (
 	"github.com/iotexproject/iotex-core/action"
 	"github.com/iotexproject/iotex-core/action/protocol/account"
 	"github.com/iotexproject/iotex-core/address"
+	"github.com/iotexproject/iotex-core/blockchain/block"
 	"github.com/iotexproject/iotex-core/config"
 	"github.com/iotexproject/iotex-core/logger"
 	"github.com/iotexproject/iotex-core/pkg/hash"
 	"github.com/iotexproject/iotex-core/pkg/keypair"
 	"github.com/iotexproject/iotex-core/pkg/util/fileutil"
-	"github.com/iotexproject/iotex-core/pkg/version"
 	"github.com/iotexproject/iotex-core/state/factory"
 )
 
@@ -94,7 +94,7 @@ func (g *Genesis) CreatorPKHash() hash.PKHash {
 }
 
 // NewGenesisBlock creates a new genesis block
-func NewGenesisBlock(chainCfg config.Chain, ws factory.WorkingSet) *Block {
+func NewGenesisBlock(chainCfg config.Chain, ws factory.WorkingSet) *block.Builder {
 	actions := loadGenesisData(chainCfg)
 	// add initial allocation
 	alloc := big.NewInt(0)
@@ -160,22 +160,12 @@ func NewGenesisBlock(chainCfg config.Chain, ws factory.WorkingSet) *Block {
 		}
 	}
 
-	block := &Block{
-		Header: &BlockHeader{
-			version:       version.ProtocolVersion,
-			chainID:       chainCfg.ID,
-			height:        uint64(0),
-			timestamp:     Gen.Timestamp,
-			prevBlockHash: Gen.ParentHash,
-			txRoot:        hash.ZeroHash32B,
-			stateRoot:     hash.ZeroHash32B,
-			blockSig:      []byte{},
-		},
-		Actions: acts,
-	}
-
-	block.Header.txRoot = block.CalculateTxRoot()
-	return block
+	return block.NewBuilder().
+		SetChainID(chainCfg.ID).
+		SetHeight(0).
+		SetTimeStamp(Gen.Timestamp).
+		SetPrevBlockHash(Gen.ParentHash).
+		AddActions(acts...)
 }
 
 // decodeKey decodes the string keypair

@@ -21,11 +21,11 @@ import (
 	"github.com/iotexproject/iotex-core/action/protocol/account"
 	"github.com/iotexproject/iotex-core/action/protocol/vote"
 	"github.com/iotexproject/iotex-core/address"
+	"github.com/iotexproject/iotex-core/blockchain/block"
 	"github.com/iotexproject/iotex-core/config"
 	"github.com/iotexproject/iotex-core/crypto"
 	"github.com/iotexproject/iotex-core/iotxaddress"
 	"github.com/iotexproject/iotex-core/pkg/hash"
-	_hash "github.com/iotexproject/iotex-core/pkg/hash"
 	"github.com/iotexproject/iotex-core/pkg/keypair"
 	"github.com/iotexproject/iotex-core/state/factory"
 	ta "github.com/iotexproject/iotex-core/test/testaddress"
@@ -256,18 +256,18 @@ func TestCreateBlockchain(t *testing.T) {
 	fmt.Printf("Marshaling Block pass\n")
 
 	// deserialize
-	deserialize := Block{}
+	deserialize := block.Block{}
 	err = deserialize.Deserialize(data)
 	require.Nil(err)
 	fmt.Printf("Unmarshaling Block pass\n")
 
-	hash := genesis.HashBlock()
-	require.Equal(hash, deserialize.HashBlock())
-	fmt.Printf("Serialize/Deserialize Block hash = %x match\n", hash)
+	blkhash := genesis.HashBlock()
+	require.Equal(blkhash, deserialize.HashBlock())
+	fmt.Printf("Serialize/Deserialize Block hash = %x match\n", blkhash)
 
-	hash = genesis.CalculateTxRoot()
-	require.Equal(hash, deserialize.CalculateTxRoot())
-	fmt.Printf("Serialize/Deserialize Block merkle = %x match\n", hash)
+	blkhash = genesis.CalculateTxRoot()
+	require.Equal(blkhash, deserialize.CalculateTxRoot())
+	fmt.Printf("Serialize/Deserialize Block merkle = %x match\n", blkhash)
 
 	// add 4 sample blocks
 	require.Nil(addTestingTsfBlocks(bc))
@@ -279,7 +279,7 @@ type MockSubscriber struct {
 	counter int
 }
 
-func (ms *MockSubscriber) HandleBlock(blk *Block) error {
+func (ms *MockSubscriber) HandleBlock(blk *block.Block) error {
 	tsfs, _, _ := action.ClassifyActions(blk.Actions)
 	ms.counter += len(tsfs)
 	return nil
@@ -341,15 +341,15 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 	require.NotNil(bc)
 
 	// check hash<-->height mapping
-	hash, err := bc.GetHashByHeight(0)
+	blkhash, err := bc.GetHashByHeight(0)
 	require.Nil(err)
-	height, err = bc.GetHeightByHash(hash)
+	height, err = bc.GetHeightByHash(blkhash)
 	require.Nil(err)
 	require.Equal(uint64(0), height)
-	blk, err := bc.GetBlockByHash(hash)
+	blk, err := bc.GetBlockByHash(blkhash)
 	require.Nil(err)
-	require.Equal(hash, blk.HashBlock())
-	fmt.Printf("Genesis hash = %x\n", hash)
+	require.Equal(blkhash, blk.HashBlock())
+	fmt.Printf("Genesis hash = %x\n", blkhash)
 
 	hash1, err := bc.GetHashByHeight(1)
 	require.Nil(err)
@@ -401,7 +401,7 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 	require.Equal(hash5, blk.HashBlock())
 	fmt.Printf("block 5 hash = %x\n", hash5)
 
-	empblk, err := bc.GetBlockByHash(_hash.ZeroHash32B)
+	empblk, err := bc.GetBlockByHash(hash.ZeroHash32B)
 	require.Nil(empblk)
 	require.NotNil(err.Error())
 
@@ -411,11 +411,11 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 
 	// add wrong blocks
 	h := bc.TipHeight()
-	hash = bc.TipHash()
+	blkhash = bc.TipHash()
 	blk, err = bc.GetBlockByHeight(h)
 	require.Nil(err)
-	require.Equal(hash, blk.HashBlock())
-	fmt.Printf("Current tip = %d hash = %x\n", h, hash)
+	require.Equal(blkhash, blk.HashBlock())
+	fmt.Printf("Current tip = %d hash = %x\n", h, blkhash)
 
 	// add block with wrong height
 	cbTsf := action.NewCoinBaseTransfer(1, big.NewInt(50), ta.Addrinfo["bravo"].RawAddress)
@@ -428,8 +428,15 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 	selp, err := action.Sign(elp, ta.Addrinfo["bravo"].RawAddress, ta.Addrinfo["bravo"].PrivateKey)
 	require.NoError(err)
 
-	blk = NewBlock(0, h+2, hash, testutil.TimestampNow(), ta.Addrinfo["bravo"].PublicKey, []action.SealedEnvelope{selp})
-	err = bc.ValidateBlock(blk, true)
+	nblk, err := block.NewBuilder().
+		SetChainID(0).
+		SetHeight(h + 2).
+		SetPrevBlockHash(blkhash).
+		SetTimeStamp(testutil.TimestampNow()).
+		AddActions(selp).SignAndBuild(ta.Addrinfo["bravo"])
+	require.NoError(err)
+
+	err = bc.ValidateBlock(&nblk, true)
 	require.NotNil(err)
 	fmt.Printf("Cannot validate block %d: %v\n", blk.Height(), err)
 
@@ -444,15 +451,14 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 	selp2, err := action.Sign(elp, ta.Addrinfo["bravo"].RawAddress, ta.Addrinfo["bravo"].PrivateKey)
 	require.NoError(err)
 
-	blk = NewBlock(
-		0,
-		h+1,
-		_hash.ZeroHash32B,
-		testutil.TimestampNow(),
-		ta.Addrinfo["bravo"].PublicKey,
-		[]action.SealedEnvelope{selp2},
-	)
-	err = bc.ValidateBlock(blk, true)
+	nblk, err = block.NewBuilder().
+		SetChainID(0).
+		SetHeight(h + 1).
+		SetPrevBlockHash(hash.ZeroHash32B).
+		SetTimeStamp(testutil.TimestampNow()).
+		AddActions(selp2).SignAndBuild(ta.Addrinfo["bravo"])
+	require.NoError(err)
+	err = bc.ValidateBlock(&nblk, true)
 	require.NotNil(err)
 	fmt.Printf("Cannot validate block %d: %v\n", blk.Height(), err)
 
@@ -471,9 +477,9 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 	tsfs, votes, _ := action.ClassifyActions(blk.Actions)
 	for _, transfer := range tsfs {
 		transferHash := transfer.Hash()
-		hash, err := bc.GetBlockHashByTransferHash(transferHash)
+		blkhash, err := bc.GetBlockHashByTransferHash(transferHash)
 		require.Nil(err)
-		require.Equal(hash, hash5)
+		require.Equal(blkhash, hash5)
 		transfer1, err := bc.GetTransferByTransferHash(transferHash)
 		require.Nil(err)
 		require.Equal(transfer1.Hash(), transferHash)
@@ -481,9 +487,9 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 
 	for _, vote := range votes {
 		voteHash := vote.Hash()
-		hash, err := bc.GetBlockHashByVoteHash(voteHash)
+		blkhash, err := bc.GetBlockHashByVoteHash(voteHash)
 		require.Nil(err)
-		require.Equal(hash, hash5)
+		require.Equal(blkhash, hash5)
 		vote1, err := bc.GetVoteByVoteHash(voteHash)
 		require.Nil(err)
 		require.Equal(vote1.Hash(), voteHash)
@@ -521,9 +527,9 @@ func TestLoadBlockchainfromDB(t *testing.T) {
 	require.Nil(err)
 	require.Equal(totalVotes, uint64(23))
 
-	_, err = bc.GetTransferByTransferHash(_hash.ZeroHash32B)
+	_, err = bc.GetTransferByTransferHash(hash.ZeroHash32B)
 	require.NotNil(err)
-	_, err = bc.GetVoteByVoteHash(_hash.ZeroHash32B)
+	_, err = bc.GetVoteByVoteHash(hash.ZeroHash32B)
 	require.NotNil(err)
 	_, err = bc.StateByAddr("")
 	require.NotNil(err)
@@ -580,15 +586,15 @@ func TestLoadBlockchainfromDBWithoutExplorer(t *testing.T) {
 	}()
 	require.NotNil(bc)
 	// check hash<-->height mapping
-	hash, err := bc.GetHashByHeight(0)
+	blkhash, err := bc.GetHashByHeight(0)
 	require.Nil(err)
-	height, err = bc.GetHeightByHash(hash)
+	height, err = bc.GetHeightByHash(blkhash)
 	require.Nil(err)
 	require.Equal(uint64(0), height)
-	blk, err := bc.GetBlockByHash(hash)
+	blk, err := bc.GetBlockByHash(blkhash)
 	require.Nil(err)
-	require.Equal(hash, blk.HashBlock())
-	fmt.Printf("Genesis hash = %x\n", hash)
+	require.Equal(blkhash, blk.HashBlock())
+	fmt.Printf("Genesis hash = %x\n", blkhash)
 	hash1, err := bc.GetHashByHeight(1)
 	require.Nil(err)
 	height, err = bc.GetHeightByHash(hash1)
@@ -625,7 +631,7 @@ func TestLoadBlockchainfromDBWithoutExplorer(t *testing.T) {
 	require.Nil(err)
 	require.Equal(hash4, blk.HashBlock())
 	fmt.Printf("block 4 hash = %x\n", hash4)
-	empblk, err := bc.GetBlockByHash(_hash.ZeroHash32B)
+	empblk, err := bc.GetBlockByHash(hash.ZeroHash32B)
 	require.Nil(empblk)
 	require.NotNil(err.Error())
 	blk, err = bc.GetBlockByHeight(60000)
@@ -633,11 +639,11 @@ func TestLoadBlockchainfromDBWithoutExplorer(t *testing.T) {
 	require.NotNil(err)
 	// add wrong blocks
 	h := bc.TipHeight()
-	hash = bc.TipHash()
+	blkhash = bc.TipHash()
 	blk, err = bc.GetBlockByHeight(h)
 	require.Nil(err)
-	require.Equal(hash, blk.HashBlock())
-	fmt.Printf("Current tip = %d hash = %x\n", h, hash)
+	require.Equal(blkhash, blk.HashBlock())
+	fmt.Printf("Current tip = %d hash = %x\n", h, blkhash)
 	// add block with wrong height
 	cbTsf := action.NewCoinBaseTransfer(1, big.NewInt(50), ta.Addrinfo["bravo"].RawAddress)
 	require.NotNil(cbTsf)
@@ -649,8 +655,15 @@ func TestLoadBlockchainfromDBWithoutExplorer(t *testing.T) {
 	selp, err := action.Sign(elp, ta.Addrinfo["bravo"].RawAddress, ta.Addrinfo["bravo"].PrivateKey)
 	require.NoError(err)
 
-	blk = NewBlock(0, h+2, hash, testutil.TimestampNow(), ta.Addrinfo["bravo"].PublicKey, []action.SealedEnvelope{selp})
-	err = bc.ValidateBlock(blk, true)
+	nblk, err := block.NewBuilder().
+		SetChainID(0).
+		SetHeight(h + 2).
+		SetPrevBlockHash(blkhash).
+		SetTimeStamp(testutil.TimestampNow()).
+		AddActions(selp).SignAndBuild(ta.Addrinfo["bravo"])
+	require.NoError(err)
+
+	err = bc.ValidateBlock(&nblk, true)
 	require.NotNil(err)
 	fmt.Printf("Cannot validate block %d: %v\n", blk.Height(), err)
 	// add block with zero prev hash
@@ -665,15 +678,14 @@ func TestLoadBlockchainfromDBWithoutExplorer(t *testing.T) {
 	selp2, err := action.Sign(elp, ta.Addrinfo["bravo"].RawAddress, ta.Addrinfo["bravo"].PrivateKey)
 	require.NoError(err)
 
-	blk = NewBlock(
-		0,
-		h+1,
-		_hash.ZeroHash32B,
-		testutil.TimestampNow(),
-		ta.Addrinfo["bravo"].PublicKey,
-		[]action.SealedEnvelope{selp2},
-	)
-	err = bc.ValidateBlock(blk, true)
+	nblk, err = block.NewBuilder().
+		SetChainID(0).
+		SetHeight(h + 1).
+		SetPrevBlockHash(hash.ZeroHash32B).
+		SetTimeStamp(testutil.TimestampNow()).
+		AddActions(selp2).SignAndBuild(ta.Addrinfo["bravo"])
+	require.NoError(err)
+	err = bc.ValidateBlock(&nblk, true)
 	require.NotNil(err)
 	fmt.Printf("Cannot validate block %d: %v\n", blk.Height(), err)
 	// cannot add existing block again
@@ -718,9 +730,9 @@ func TestLoadBlockchainfromDBWithoutExplorer(t *testing.T) {
 	require.NotNil(err)
 	_, err = bc.GetTotalVotes()
 	require.NotNil(err)
-	_, err = bc.GetTransferByTransferHash(_hash.ZeroHash32B)
+	_, err = bc.GetTransferByTransferHash(hash.ZeroHash32B)
 	require.NotNil(err)
-	_, err = bc.GetVoteByVoteHash(_hash.ZeroHash32B)
+	_, err = bc.GetVoteByVoteHash(hash.ZeroHash32B)
 	require.NotNil(err)
 	_, err = bc.StateByAddr("")
 	require.NotNil(err)
@@ -938,7 +950,7 @@ func TestActions(t *testing.T) {
 	require.NoError(err)
 	require.NoError(sf.Commit(ws))
 
-	val := validator{sf: sf, validatorAddr: ""}
+	val := &validator{sf: sf, validatorAddr: ""}
 	bc.Validator().AddActionEnvelopeValidators(protocol.NewGenericValidator(bc))
 	bc.Validator().AddActionValidators(account.NewProtocol(), vote.NewProtocol(bc))
 	acts := []action.SealedEnvelope{}
@@ -1036,9 +1048,9 @@ func TestMintDKGBlock(t *testing.T) {
 		require.NoError(err)
 		require.NoError(chain.ValidateBlock(blk, true))
 		require.NoError(chain.CommitBlock(blk))
-		require.Equal(pkList[i], blk.Header.DKGPubkey)
-		require.Equal(idList[i], blk.Header.DKGID)
-		require.True(len(blk.Header.DKGBlockSig) > 0)
+		require.Equal(pkList[i], blk.DKGPubkey())
+		require.Equal(idList[i], blk.DKGID())
+		require.True(len(blk.DKGSignature()) > 0)
 	}
 	height, err := chain.GetFactory().Height()
 	require.NoError(err)
@@ -1046,4 +1058,25 @@ func TestMintDKGBlock(t *testing.T) {
 	candidates, err := chain.CandidatesByHeight(height)
 	require.NoError(err)
 	require.Equal(21, len(candidates))
+}
+
+func addCreatorToFactory(sf factory.Factory) error {
+	ws, err := sf.NewWorkingSet()
+	if err != nil {
+		return err
+	}
+	if _, err = account.LoadOrCreateAccount(ws, ta.Addrinfo["producer"].RawAddress, Gen.TotalSupply); err != nil {
+		return err
+	}
+	gasLimit := testutil.TestGasLimit
+	ctx := protocol.WithRunActionsCtx(context.Background(),
+		protocol.RunActionsCtx{
+			ProducerAddr:    ta.Addrinfo["producer"].RawAddress,
+			GasLimit:        &gasLimit,
+			EnableGasCharge: testutil.EnableGasCharge,
+		})
+	if _, _, err = ws.RunActions(ctx, 0, nil); err != nil {
+		return err
+	}
+	return sf.Commit(ws)
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/iotexproject/iotex-core/actpool"
 	"github.com/iotexproject/iotex-core/address"
 	"github.com/iotexproject/iotex-core/blockchain"
+	"github.com/iotexproject/iotex-core/blockchain/block"
 	"github.com/iotexproject/iotex-core/config"
 	"github.com/iotexproject/iotex-core/consensus/scheme"
 	"github.com/iotexproject/iotex-core/consensus/scheme/rolldpos"
@@ -84,7 +85,7 @@ func NewConsensus(
 	}
 
 	cs := &IotxConsensus{cfg: cfg.Consensus}
-	mintBlockCB := func() (*blockchain.Block, error) {
+	mintBlockCB := func() (*block.Block, error) {
 		acts := ap.PickActs()
 		logger.Debug().
 			Int("actions", len(acts)).
@@ -103,7 +104,7 @@ func NewConsensus(
 		return blk, nil
 	}
 
-	commitBlockCB := func(blk *blockchain.Block) error {
+	commitBlockCB := func(blk *block.Block) error {
 		err := bc.CommitBlock(blk)
 		if err != nil {
 			if err == db.ErrAlreadyExist {
@@ -118,7 +119,7 @@ func NewConsensus(
 		return err
 	}
 
-	broadcastBlockCB := func(blk *blockchain.Block) error {
+	broadcastBlockCB := func(blk *block.Block) error {
 		if blkPb := blk.ConvertToBlockPb(); blkPb != nil {
 			return ops.broadcastHandler(blkPb)
 		}

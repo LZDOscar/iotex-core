@@ -715,7 +715,7 @@ func (bc *blockchain) MintNewBlock(
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to obtain working set from state factory")
 	}
-	root, rc, err := bc.runActions(blkbd.RunnableActions(producer), ws, false)
+	root, rc, err := bc.runActions(blkbd.RunnableActions(producer), ws)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to update state changes in new block %d", bc.tipHeight+1)
 	}
@@ -726,6 +726,7 @@ func (bc *blockchain) MintNewBlock(
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create block")
 	}
+	// attach working set to be committed to state factory
 	blk.WorkingSet = ws
 
 	return &blk, nil
@@ -752,7 +753,7 @@ func (bc *blockchain) MintNewSecretBlock(
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to obtain working set from state factory")
 	}
-	root, receipts, err := bc.runActions(blkbd.RunnableActions(producer), ws, false)
+	root, receipts, err := bc.runActions(blkbd.RunnableActions(producer), ws)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to update state changes in new block %d", bc.tipHeight+1)
 	}
@@ -763,6 +764,7 @@ func (bc *blockchain) MintNewSecretBlock(
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create block")
 	}
+	// attach working set to be committed to state factory
 	blk.WorkingSet = ws
 
 	return &blk, nil
@@ -925,7 +927,7 @@ func (bc *blockchain) startEmptyBlockchain() error {
 
 		// run execution and update state trie root hash
 		racts := genesisbd.RunnableActions(iaddr)
-		root, receipts, err := bc.runActions(racts, ws, false)
+		root, receipts, err := bc.runActions(racts, ws)
 		if err != nil {
 			return errors.Wrap(err, "failed to update state changes in Genesis block")
 		}
@@ -1011,8 +1013,12 @@ func (bc *blockchain) startExistingBlockchain(recoveryHeight uint64) error {
 		if ws, err = bc.sf.NewWorkingSet(); err != nil {
 			return errors.Wrap(err, "failed to obtain working set from state factory")
 		}
-		if _, _, err := bc.runActions(blk.RunnableActions(), ws, true); err != nil {
+		root, _, err := bc.runActions(blk.RunnableActions(), ws)
+		if err != nil {
 			return err
+		}
+		if err = blk.VerifyStateRoot(root); err != nil {
+			return errors.Wrap(err, "Failed to verify state root")
 		}
 		if err := bc.sf.Commit(ws); err != nil {
 			return err
@@ -1045,7 +1051,7 @@ func (bc *blockchain) validateBlock(blk *block.Block, containCoinbase bool) erro
 		return errors.Wrap(err, "Failed to obtain working set from state factory")
 	}
 	runTimer := bc.timerFactory.NewTimer("runActions")
-	root, _, err := bc.runActions(blk.RunnableActions(), ws, true)
+	root, _, err := bc.runActions(blk.RunnableActions(), ws)
 	runTimer.End()
 	if err != nil {
 		logger.Panic().Err(err).Msgf("Failed to update state on height %d", bc.tipHeight)
@@ -1100,7 +1106,7 @@ func (bc *blockchain) commitBlock(blk *block.Block) error {
 	return nil
 }
 
-func (bc *blockchain) runActions(acts block.RunnableActions, ws factory.WorkingSet, verify bool) (hash.Hash32B, map[hash.Hash32B]*action.Receipt, error) {
+func (bc *blockchain) runActions(acts block.RunnableActions, ws factory.WorkingSet) (hash.Hash32B, map[hash.Hash32B]*action.Receipt, error) {
 	if bc.sf == nil {
 		return hash.ZeroHash32B, nil, errors.New("statefactory cannot be nil")
 	}
@@ -1117,15 +1123,6 @@ func (bc *blockchain) runActions(acts block.RunnableActions, ws factory.WorkingS
 			EnableGasCharge: bc.config.Chain.EnableGasCharge,
 		})
 	return ws.RunActions(ctx, acts.BlockHeight, acts.Actions)
-	//if verify {
-	//// verify state root hash match
-	//if err = blk.VerifyStateRoot(root); err != nil {
-	//return root, err
-	//}
-	//}
-	//for hash, receipt := range receipts {
-	//blk.Receipts[hash] = receipt
-	//}
 }
 
 func (bc *blockchain) emitToSubscribers(blk *block.Block) {

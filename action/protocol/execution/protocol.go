@@ -16,7 +16,21 @@ import (
 	"github.com/iotexproject/iotex-core/action/protocol"
 	"github.com/iotexproject/iotex-core/action/protocol/execution/evm"
 	"github.com/iotexproject/iotex-core/iotxaddress"
+	"github.com/iotexproject/iotex-core/logger"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var execCounterMtc = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "iotex_exec_counter",
+		Help: "Node exec status.",
+	},
+	[]string{"source"},
+)
+
+func init() {
+	prometheus.MustRegister(execCounterMtc)
+}
 
 // ExecutionSizeLimit is the maximum size of execution allowed
 const ExecutionSizeLimit = 32 * 1024
@@ -41,10 +55,13 @@ func (p *Protocol) Handle(ctx context.Context, act action.Action, sm protocol.St
 	if !ok {
 		return nil, errors.New("failed to get RunActionsCtx")
 	}
+	execCounterMtc.WithLabelValues("execute").Inc()
+	logger.Warn().Msg("hakuna")
 	receipt, err := evm.ExecuteContract(raCtx.BlockHeight, raCtx.BlockHash, raCtx.ProducerPubKey, raCtx.BlockTimeStamp,
 		sm, exec, p.cm, raCtx.GasLimit, raCtx.EnableGasCharge)
 
 	if err != nil {
+		logger.Warn().Msg("failed to hakuna")
 		return nil, errors.Wrap(err, "failed to execute contract")
 	}
 

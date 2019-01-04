@@ -10,10 +10,33 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/iotexproject/iotex-core/logger"
 	"github.com/iotexproject/iotex-core/pkg/hash"
 	"github.com/iotexproject/iotex-core/pkg/util/byteutil"
 )
+
+var ssGaugeMtc = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Name: "iotex_snapshot_gauge",
+		Help: "Node snapshot status.",
+	},
+	[]string{"source"},
+)
+
+var ssCounterMtc = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "iotex_snapshot_counter",
+		Help: "Node snapshot status.",
+	},
+	[]string{"source"},
+)
+
+func init() {
+	prometheus.MustRegister(ssCounterMtc)
+	prometheus.MustRegister(ssGaugeMtc)
+}
 
 type (
 	// KVStoreBatch defines a batch buffer interface that stages Put/Delete entries in sequential order
@@ -225,6 +248,7 @@ func (cb *cachedBatch) Unlock() {
 
 // ClearAndUnlock clears the write queue and unlocks the batch
 func (cb *cachedBatch) ClearAndUnlock() {
+	ssCounterMtc.WithLabelValues("clearAndUnlock").Inc()
 	defer cb.lock.Unlock()
 	cb.KVStoreCache.Clear()
 	cb.KVStoreBatch.Clear()
@@ -269,6 +293,7 @@ func (cb *cachedBatch) Delete(namespace string, key []byte, errorFormat string, 
 
 // Clear clear the cached batch buffer
 func (cb *cachedBatch) Clear() {
+	ssCounterMtc.WithLabelValues("clear").Inc()
 	cb.lock.Lock()
 	defer cb.lock.Unlock()
 	cb.KVStoreCache.Clear()
@@ -291,17 +316,21 @@ func (cb *cachedBatch) Get(namespace string, key []byte) ([]byte, error) {
 
 // Snapshot takes a snapshot of current cached batch
 func (cb *cachedBatch) Snapshot() int {
+	ssCounterMtc.WithLabelValues("snapshot").Inc()
+	logger.Warn().Msg("hakuna cb")
 	cb.lock.Lock()
 	defer cb.lock.Unlock()
 	defer func() { cb.tag++ }()
 	// save a copy of current batch/cache
 	cb.batchShots = append(cb.batchShots, cb.Size())
 	cb.cacheShots = append(cb.cacheShots, cb.KVStoreCache.Clone())
+	ssGaugeMtc.WithLabelValues("map_size").Set(float64(len(cb.batchShots)))
 	return cb.tag
 }
 
 // Revert sets the cached batch to the state at the given snapshot
 func (cb *cachedBatch) Revert(snapshot int) error {
+	ssCounterMtc.WithLabelValues("revert").Inc()
 	cb.lock.Lock()
 	defer cb.lock.Unlock()
 	// throw error if the snapshot number does not exist

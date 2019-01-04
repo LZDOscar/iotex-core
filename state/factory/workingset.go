@@ -15,6 +15,7 @@ import (
 	"github.com/iotexproject/iotex-core/action/protocol"
 	"github.com/iotexproject/iotex-core/db"
 	"github.com/iotexproject/iotex-core/db/trie"
+	"github.com/iotexproject/iotex-core/logger"
 	"github.com/iotexproject/iotex-core/pkg/hash"
 	"github.com/iotexproject/iotex-core/pkg/util/byteutil"
 	"github.com/iotexproject/iotex-core/state"
@@ -133,6 +134,7 @@ func (ws *workingSet) RunActions(
 }
 
 func (ws *workingSet) Snapshot() int {
+	logger.Warn().Msg("hakuna ws")
 	s := ws.cb.Snapshot()
 	ws.trieRoots[s] = byteutil.BytesTo32B(ws.accountTrie.RootHash())
 	return s

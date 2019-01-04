@@ -272,6 +272,7 @@ func (stateDB *StateDBAdapter) RevertToSnapshot(snapshot int) {
 
 // Snapshot returns the snapshot id
 func (stateDB *StateDBAdapter) Snapshot() int {
+	logger.Warn().Msg("hakuna stateDB")
 	sn := stateDB.sm.Snapshot()
 	if _, ok := stateDB.suicideSnapshot[sn]; ok {
 		err := errors.New("unexpected error: duplicate snapshot version")

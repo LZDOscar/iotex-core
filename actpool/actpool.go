@@ -134,6 +134,20 @@ func (ap *actPool) PickActs() []action.SealedEnvelope {
 			}
 		}
 	}
+
+	logger.Info().Int("pickedLen", len(actions)).Int("remainLen", len(ap.allActions)).Msg("action pool len.")
+	for _, act := range actions {
+		logger.Info().
+			Str("src", act.SrcAddr()).
+			Uint64("nonce", act.Nonce()).
+			Msg("picked actions.")
+	}
+	for _, act := range ap.allActions {
+		logger.Info().
+			Str("src", act.SrcAddr()).
+			Uint64("nonce", act.Nonce()).
+			Msg("remaining actions.")
+	}
 	return actions
 }
 
